@@ -23,6 +23,8 @@ long int controle[] = {0xFF00BF00, 0xFE01BF00, 0xFD02BF00, 0xFB04BF00, 0xFA05BF0
 int lengthOfControle = sizeof(controle)/sizeof(controle[0]);
 long int memory;
 
+void verifyButton();
+
 void setup() {
   Serial.begin(9600);
   
@@ -45,14 +47,16 @@ void setup() {
 
   IrReceiver.begin(RECV_PIN, ENABLE_LED_FEEDBACK);
   Serial.println("Sensor IR habilitado!");
+
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), verifyButton, CHANGE);
 }
 
 void loop() {
 
   programming();
-  verifySignal();
+  signalToRead();
 
-  delay(1000);
+  delay(atraso);
 }
 
 void verifyButton() {
@@ -64,7 +68,7 @@ void verifyButton() {
   }
 }
 
-void verifySignal() {
+void signalToRead() {
   Serial.println("SIGNAL");
 
   if(IrReceiver.decode()) {
@@ -119,9 +123,9 @@ int findIndex(long int *items, long int item) {
 }
 
 void programming() {  
-  Serial.println("PROGRAMMING\n");
+  Serial.println("PROGRAMMING");
   
-  while(verifyButton(), programmingState) {
+  while(programmingState) {
     int index = 0;
       
     if(IrReceiver.decode() && IrReceiver.decodedIRData.decodedRawData != 0) {
