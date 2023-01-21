@@ -23,8 +23,9 @@ int counters_for_devices[] = {
   0, 0, 0, 0, 0
 };
 int time_in_seconds_for_devices[] = {
-  3, 0, 0, 0, 0
+  0, 0, 0, 0, 0
 };
+int device_witch_timer_is_activated = -1;
 
 
 bool programmingState = false;
@@ -99,17 +100,17 @@ int convertSecondsToCounter(int seconds) {
 }
 
 void callback() {
-  counters_for_devices[0]++;
+  counters_for_devices[device_witch_timer_is_activated]++;
   if(
-      devices_timer_activated[0] && 
-      counters_for_devices[0] == convertSecondsToCounter(time_in_seconds_for_devices[0])
+      devices_timer_activated[device_witch_timer_is_activated] && 
+      counters_for_devices[device_witch_timer_is_activated] == convertSecondsToCounter(time_in_seconds_for_devices[device_witch_timer_is_activated])
     ) {
 
-    devices[0] = !devices[0];
-    digitalWrite(devices_pin[0], devices[0]);
+    devices[device_witch_timer_is_activated] = !devices[device_witch_timer_is_activated];
+    digitalWrite(devices_pin[device_witch_timer_is_activated], devices[device_witch_timer_is_activated]);
     
-    counters_for_devices[0] = 0;
-    devices_timer_activated[0] = false;
+    counters_for_devices[device_witch_timer_is_activated] = 0;
+    devices_timer_activated[device_witch_timer_is_activated] = false;
     Timer1.detachInterrupt();
   }
 }
@@ -124,14 +125,14 @@ void verifyButton() {
 }
 
 long int valueFromIR() {
-  if(IrReceiver.decode() && IrReceiver.decodedIRData.decodedRawData != 0) {
-    Serial.println("Algum código foi recebido do controle remoto!");
-    long int code = IrReceiver.decodedIRData.decodedRawData;
+  while(IrReceiver.decode() == false || IrReceiver.decodedIRData.decodedRawData == 0) {
     IrReceiver.resume();
-
-    return code;
   }
-  return 0;
+  Serial.println("Algum código foi recebido do controle remoto!");
+  long int code = IrReceiver.decodedIRData.decodedRawData;
+  IrReceiver.resume();
+
+  return code;
 }
 
 void signalToRead() {
@@ -209,10 +210,13 @@ void setTimer() {
     }
   } while(1);
 
-  devices_timer_activated[0] = true;
+  device_witch_timer_is_activated = dispositivo;
+  devices_timer_activated[dispositivo] = true;
+  time_in_seconds_for_devices[dispositivo] = segundos;
+
   Timer1.initialize(500000);
   Timer1.attachInterrupt(callback);
-  
+
   Serial.println("Timer feito!");
 }
 
