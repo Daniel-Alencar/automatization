@@ -3,26 +3,29 @@
 #include "TimerOne.h"
 
 #define BYTES_LENGTH 5
-#define atraso 250
-#define QUANTIDADE_DISPOSITIVOS 4
+#define ATRASO_PADRAO 250
+#define QUANTIDADE_DISPOSITIVOS 5
 
 #define RECV_PIN 11
-
-#define LED1_PIN 5
-#define LED2_PIN 6
-#define LED3_PIN 7
-
-#define RELE1_PIN 3
-#define RELE2_PIN 4
 
 #define LED_PIN 8
 #define BUTTON_PIN 2
 
-bool LED1 = false, LED2 = false, LED3 = false;
-bool RELE1 = false, RELE2 = false;
+int devices_pin[] = { 5, 6, 7, 3, 4 };
 
-bool LED1_timer = false, LED2_timer = false, LED3_timer = false;
-bool RELE1_timer = false, RELE2_timer = false;
+bool devices[] = {
+  false, false, false, false, false
+};
+bool devices_timer_activated[] = {
+  false, false, false, false, false
+};
+int counters_for_devices[] = {
+  0, 0, 0, 0, 0
+};
+int time_in_seconds_for_devices[] = {
+  3, 0, 0, 0, 0
+};
+
 
 bool programmingState = false;
 long int controle[] = {
@@ -38,16 +41,6 @@ long int controle[] = {
 };
 int lengthOfControle = sizeof(controle) / sizeof(controle[0]);
 long int memory;
-long int counter = 0;
-
-void programming();
-int findIndex(long int *items, long int item);
-int convertIndexToAddress(int index);
-void signalToRead();
-long int valueFromIR();
-void verifyButton();
-int funcaoControle(int index);
-void callback();
 
 int funcaoControle(int index) {
   if(index >= 0 && index <= 9) {
@@ -61,24 +54,31 @@ int funcaoControle(int index) {
   }
 }
 
+void programming();
+int findIndex(long int *items, long int item);
+int convertIndexToAddress(int index);
+void signalToRead();
+long int valueFromIR();
+void verifyButton();
+void callback();
+int convertSecondsToCounter(int seconds);
+
 void setup() {
   Serial.begin(9600);
   
-  pinMode(LED1_PIN, OUTPUT);
-  pinMode(LED2_PIN, OUTPUT);
-  pinMode(LED3_PIN, OUTPUT);
-  pinMode(RELE1_PIN, OUTPUT);
-  pinMode(RELE2_PIN, OUTPUT);
-
+  pinMode(devices_pin[0], OUTPUT);
+  pinMode(devices_pin[1], OUTPUT);
+  pinMode(devices_pin[2], OUTPUT);
+  pinMode(devices_pin[3], OUTPUT);
+  pinMode(devices_pin[4], OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   
-  digitalWrite(LED1_PIN, LOW);
-  digitalWrite(LED2_PIN, LOW);
-  digitalWrite(LED3_PIN, LOW);
-  digitalWrite(RELE1_PIN, HIGH);
-  digitalWrite(RELE2_PIN, HIGH);
-
+  digitalWrite(devices_pin[0], LOW);
+  digitalWrite(devices_pin[1], LOW);
+  digitalWrite(devices_pin[2], LOW);
+  digitalWrite(devices_pin[3], HIGH);
+  digitalWrite(devices_pin[4], HIGH);
   digitalWrite(LED_PIN, LOW);
 
   IrReceiver.begin(RECV_PIN, ENABLE_LED_FEEDBACK);
@@ -88,22 +88,29 @@ void setup() {
 }
 
 void loop() {
-
   programming();
   signalToRead();
 
-  delay(atraso);
+  delay(ATRASO_PADRAO);
+}
+
+int convertSecondsToCounter(int seconds) {
+  return 2 * seconds;
 }
 
 void callback() {
-  counter++;
-  if(LED1_timer && counter == 2) {
+  counters_for_devices[0]++;
+  if(
+      devices_timer_activated[0] && 
+      counters_for_devices[0] == convertSecondsToCounter(time_in_seconds_for_devices[0])
+    ) {
 
-    LED1 = !LED1;
-    digitalWrite(LED1_PIN, LED1);
+    devices[0] = !devices[0];
+    digitalWrite(devices_pin[0], devices[0]);
     
-    counter = 0;
-    LED1_timer = false;
+    counters_for_devices[0] = 0;
+    devices_timer_activated[0] = false;
+    Timer1.detachInterrupt();
   }
 }
 
@@ -112,13 +119,13 @@ void verifyButton() {
     programmingState = !programmingState;
     
     digitalWrite(LED_PIN, programmingState);
-    delay(atraso);
+    delay(ATRASO_PADRAO);
   }
 }
 
 long int valueFromIR() {
   if(IrReceiver.decode() && IrReceiver.decodedIRData.decodedRawData != 0) {
-    Serial.println("Algum codigo foi recebido do controle remoto!");
+    Serial.println("Algum código foi recebido do controle remoto!");
     long int code = IrReceiver.decodedIRData.decodedRawData;
     IrReceiver.resume();
 
@@ -136,95 +143,76 @@ void signalToRead() {
     IrReceiver.resume();
 
     Serial.print("Código: "); Serial.println(code, HEX);
-  
-    EEPROM.get(convertIndexToAddress(0), memory);
-    if(code == controle[0] || code == memory) {
-      LED1 = !LED1;
-      digitalWrite(LED1_PIN, LED1);
-      delay(atraso);
-    }
-    EEPROM.get(convertIndexToAddress(1), memory);
-    if(code == controle[1] || code == memory) {
-      LED2 = !LED2;
-      digitalWrite(LED2_PIN, LED2);
-      delay(atraso);
-    }
-    EEPROM.get(convertIndexToAddress(2), memory);
-    if(code == controle[2] || code == memory) {
-      LED3 = !LED3;
-      digitalWrite(LED3_PIN, LED3);
-      delay(atraso);
-    }
-    
-    EEPROM.get(convertIndexToAddress(3), memory);
-    if(code == controle[3] || code == memory) {
-      RELE1 = !RELE1;
-      digitalWrite(RELE1_PIN, RELE1);
-      delay(atraso);
-    }
-    EEPROM.get(convertIndexToAddress(4), memory);
-    if(code == controle[4] || code == memory) {
-      RELE2 = !RELE2;
-      digitalWrite(RELE2_PIN, !RELE2);
-      delay(atraso);
-    }
 
+    int i;
+    for(i = 0; i < 10; i++) {
+      EEPROM.get(convertIndexToAddress(i), memory);
+      if(code == controle[i] || code == memory) {
+        devices[i] = !devices[i];
+
+        digitalWrite(devices_pin[i], devices[i]);
+        delay(ATRASO_PADRAO);
+      }
+    }
+  
     EEPROM.get(convertIndexToAddress(10), memory);
     if(code == controle[10] || code == memory) {
-      long int newCode;
-      int index;
-      int dispositivo;
-      int segundos;
-
-      // Selecionar dispositivo
-      do {
-        newCode = valueFromIR();
-        index = findIndex(controle, newCode);
-
-        if(index >= 0 && index < QUANTIDADE_DISPOSITIVOS) {
-          Serial.println(String("Dispositivo ") + String(index + 1) + String(" selecionado!"));
-          dispositivo = index + 1;
-          break;
-        } else {
-          Serial.println("Selecione um dispositivo válido!");
-        }
-      } while(1);
-
-      // Selecionar quantidade de segundos
-      do {
-        newCode = valueFromIR();
-        index = findIndex(controle, newCode);
-
-        if(funcaoControle(index) == 0) {
-          Serial.println(String(index + 1) + String(" segundos selecionados!"));
-          break;
-        } else {
-          Serial.println("Selecione uma quantidade válida!");
-        }
-      } while(1);
-
-      // Apertar "OK"
-      do {
-        newCode = valueFromIR();
-        index = findIndex(controle, newCode);
-
-        if(funcaoControle(index) == 2) {
-          Serial.println(String("OK"));
-          break;
-        } else {
-          Serial.println("Selecione OK!");
-        }
-      } while(1);
-
-      setTimer(dispositivo, segundos);
+      setTimer();
     }
   }
 }
 
-void setTimer(int dispositivo, int segundos) {
+void setTimer() {
+  long int newCode;
+  int index;
+  int dispositivo;
+  int segundos;
+
+  // Selecionar dispositivo
+  do {
+    newCode = valueFromIR();
+    index = findIndex(controle, newCode);
+
+    if(index >= 0 && index < QUANTIDADE_DISPOSITIVOS) {
+      Serial.println(String("Dispositivo ") + String(index + 1) + String(" selecionado!"));
+      dispositivo = index;
+      break;
+    } else {
+      Serial.println("Selecione um dispositivo válido!");
+    }
+  } while(1);
+
+  // Selecionar quantidade de segundos
+  do {
+    newCode = valueFromIR();
+    index = findIndex(controle, newCode);
+
+    if(funcaoControle(index) == 0) {
+      Serial.println(String(index + 1) + String(" segundos selecionados!"));
+      segundos = index + 1;
+      break;
+    } else {
+      Serial.println("Selecione uma quantidade válida!");
+    }
+  } while(1);
+
+  // Apertar "OK"
+  do {
+    newCode = valueFromIR();
+    index = findIndex(controle, newCode);
+
+    if(funcaoControle(index) == 2) {
+      Serial.println(String("OK"));
+      break;
+    } else {
+      Serial.println("Selecione OK!");
+    }
+  } while(1);
+
+  devices_timer_activated[0] = true;
   Timer1.initialize(500000);
   Timer1.attachInterrupt(callback);
-  LED1_timer = true;
+  
   Serial.println("Timer feito!");
 }
 
