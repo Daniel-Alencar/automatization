@@ -230,7 +230,16 @@ void setTimer() {
 }
 
 int convertTimeInSeconds(String time_string) {
-  return 10;
+  char hour[] = { time_string[0], time_string[1] };
+  char minute[] = { time_string[3], time_string[4] };
+  char second[] = { time_string[6], time_string[7] };
+
+  int hour_int = atoi(hour);
+  int minute_int = atoi(minute);
+  int second_int = atoi(second);
+
+  int time_in_seconds = hour_int * 3600 + minute_int * 60 + second_int;
+  return time_in_seconds;
 }
 
 int convertIndexToAddress(int index) {
