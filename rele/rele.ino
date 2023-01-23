@@ -169,11 +169,10 @@ void setTimer() {
   int index;
   int dispositivo;
 
-  int index_time = 7;
-  int index_control_time[] = {1,2};
-  int index_control = 0;
   int number_time;
-  String time_string = "00:00:00";
+  String time_string = "000000";
+  int lengthOfTime = sizeof(time_string) / sizeof(time_string[0]);
+  int index_control = 0;
 
   // Selecionar dispositivo
   do {
@@ -190,7 +189,7 @@ void setTimer() {
   } while(1);
 
   // Selecionar o tempo do timer
-  Serial.println(time_string);
+  Serial.println("00:00:00");
   do {
     newCode = valueFromIR();
     index = findIndex(controle, newCode);
@@ -203,10 +202,19 @@ void setTimer() {
 
       if(funcaoControle(index) == 0) {
         number_time = index + 1;
-        time_string[index_time] = number_time + '0';
-        Serial.println(time_string);
 
-        index_time -= index_control_time[index_control % 2];
+        int i;
+        for(i = 1; i < lengthOfTime; i++) {
+          time_string[i - 1] = time_string[i];
+        }
+        time_string[i - 1] = (number_time + '0');
+        char time_string_formatted[] = {
+          time_string[0], time_string[1], ':', 
+          time_string[2], time_string[3], ':', 
+          time_string[4], time_string[5], '\0'
+        };
+        Serial.println(time_string_formatted);
+
         index_control++;
 
       } else {
@@ -231,8 +239,8 @@ void setTimer() {
 
 int convertTimeInSeconds(String time_string) {
   char hour[] = { time_string[0], time_string[1] };
-  char minute[] = { time_string[3], time_string[4] };
-  char second[] = { time_string[6], time_string[7] };
+  char minute[] = { time_string[2], time_string[3] };
+  char second[] = { time_string[4], time_string[5] };
 
   int hour_int = atoi(hour);
   int minute_int = atoi(minute);
