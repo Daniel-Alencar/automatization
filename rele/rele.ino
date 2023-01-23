@@ -63,6 +63,7 @@ long int valueFromIR();
 void verifyButton();
 void callback();
 int convertSecondsToCounter(int seconds);
+int convertTimeInSeconds(String time_string);
 
 void setup() {
   Serial.begin(9600);
@@ -167,7 +168,12 @@ void setTimer() {
   long int newCode;
   int index;
   int dispositivo;
-  int segundos;
+
+  int index_time = 7;
+  int index_control_time[] = {1,2};
+  int index_control = 0;
+  int number_time;
+  String time_string = "00:00:00";
 
   // Selecionar dispositivo
   do {
@@ -183,41 +189,48 @@ void setTimer() {
     }
   } while(1);
 
-  // Selecionar quantidade de segundos
-  do {
-    newCode = valueFromIR();
-    index = findIndex(controle, newCode);
-
-    if(funcaoControle(index) == 0) {
-      Serial.println(String(index + 1) + String(" segundos selecionados!"));
-      segundos = index + 1;
-      break;
-    } else {
-      Serial.println("Selecione uma quantidade válida!");
-    }
-  } while(1);
-
-  // Apertar "OK"
+  // Selecionar o tempo do timer
+  Serial.println(time_string);
   do {
     newCode = valueFromIR();
     index = findIndex(controle, newCode);
 
     if(funcaoControle(index) == 2) {
-      Serial.println(String("OK"));
       break;
-    } else {
-      Serial.println("Selecione OK!");
     }
+
+    if(index_control < 6) {
+
+      if(funcaoControle(index) == 0) {
+        number_time = index + 1;
+        time_string[index_time] = number_time + '0';
+        Serial.println(time_string);
+
+        index_time -= index_control_time[index_control % 2];
+        index_control++;
+
+      } else {
+        Serial.println("Selecione uma quantidade válida!");
+      }
+
+    } else {
+      Serial.println("Aperte o botão OK");
+    }
+
   } while(1);
 
   device_witch_timer_is_activated = dispositivo;
   devices_timer_activated[dispositivo] = true;
-  time_in_seconds_for_devices[dispositivo] = segundos;
+  time_in_seconds_for_devices[dispositivo] = convertTimeInSeconds(time_string);
 
   Timer1.initialize(500000);
   Timer1.attachInterrupt(callback);
 
   Serial.println("Timer feito!");
+}
+
+int convertTimeInSeconds(String time_string) {
+  return 10;
 }
 
 int convertIndexToAddress(int index) {
