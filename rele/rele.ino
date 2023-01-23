@@ -11,8 +11,12 @@
 #define LED_PIN 8
 #define BUTTON_PIN 2
 
-int devices_pin[] = { 5, 6, 7, 3, 4 };
+#define NUMBER_BUTTON 0
+#define TIMER_BUTTON 1
+#define OK_BUTTON 2
+#define ARROW_BUTTON 3
 
+int devices_pin[] = { 5, 6, 7, 3, 4 };
 bool devices[] = {
   false, false, false, false, false
 };
@@ -30,9 +34,9 @@ int device_witch_timer_is_activated = -1;
 
 bool programmingState = false;
 long int controle[] = {
-  // Os números 1,2,3,4,5,6,7,8,9,0
-  0xFF00BF00, 0xFE01BF00, 0xFD02BF00, 0xFB04BF00, 0xFA05BF00, 
-  0xF906BF00, 0xF708BF00, 0xF609BF00, 0xF50ABF00, 0xF20DBF00,
+  // Os números 0,1,2,3,4,5,6,7,8,9
+  0xF20DBF00, 0xFF00BF00, 0xFE01BF00, 0xFD02BF00, 0xFB04BF00, 
+  0xFA05BF00, 0xF906BF00, 0xF708BF00, 0xF609BF00, 0xF50ABF00,
   // Setar temporizador
   0xE11EBF00,
   // Botão OK
@@ -45,18 +49,18 @@ long int memory;
 
 int funcaoControle(int index) {
   if(index >= 0 && index <= 9) {
-    return 0;
+    return NUMBER_BUTTON;
   } else if (index == 10) {
-    return 1;
+    return TIMER_BUTTON;
   } else if (index == 11) {
-    return 2;
+    return OK_BUTTON;
   } else if (index >= 12 && index <= 15) {
-    return 3;
+    return ARROW_BUTTON;
   }
 }
 
 void programming();
-int findIndex(long int *items, long int item);
+int findIndexOfCodeIntoControle(long int item);
 int convertIndexToAddress(int index);
 void signalToRead();
 long int valueFromIR();
@@ -147,12 +151,12 @@ void signalToRead() {
     Serial.print("Código: "); Serial.println(code, HEX);
 
     int i;
-    for(i = 0; i < 10; i++) {
+    for(i = 1; i < 10; i++) {
       EEPROM.get(convertIndexToAddress(i), memory);
       if(code == controle[i] || code == memory) {
-        devices[i] = !devices[i];
+        devices[i - 1] = !devices[i - 1];
 
-        digitalWrite(devices_pin[i], devices[i]);
+        digitalWrite(devices_pin[i - 1], devices[i - 1]);
         delay(ATRASO_PADRAO);
       }
     }
@@ -177,11 +181,11 @@ void setTimer() {
   // Selecionar dispositivo
   do {
     newCode = valueFromIR();
-    index = findIndex(controle, newCode);
+    index = findIndexOfCodeIntoControle(newCode);
 
-    if(index >= 0 && index < QUANTIDADE_DISPOSITIVOS) {
-      Serial.println(String("Dispositivo ") + String(index + 1) + String(" selecionado!"));
-      dispositivo = index;
+    if(index > 0 && index <= QUANTIDADE_DISPOSITIVOS) {
+      Serial.println(String("Dispositivo ") + String(index) + String(" selecionado!"));
+      dispositivo = index - 1;
       break;
     } else {
       Serial.println("Selecione um dispositivo válido!");
@@ -192,16 +196,16 @@ void setTimer() {
   Serial.println("00:00:00");
   do {
     newCode = valueFromIR();
-    index = findIndex(controle, newCode);
+    index = findIndexOfCodeIntoControle(newCode);
 
-    if(funcaoControle(index) == 2) {
+    if(funcaoControle(index) == OK_BUTTON) {
       break;
     }
 
     if(index_control < 6) {
 
-      if(funcaoControle(index) == 0) {
-        number_time = index + 1;
+      if(funcaoControle(index) == NUMBER_BUTTON) {
+        number_time = index;
 
         int i;
         for(i = 1; i < lengthOfTime; i++) {
@@ -254,7 +258,7 @@ int convertIndexToAddress(int index) {
   return index * BYTES_LENGTH;
 }
 
-int findIndex(long int *items, long int item) {
+int findIndexOfCodeIntoControle(long int item) {
   int i;
   for(i = 0; i < lengthOfControle; i++) {
     if(controle[i] == item) {
@@ -278,7 +282,7 @@ void programming() {
       Serial.print("Código: "); Serial.println(actualCode, HEX);
       Serial.println();
       
-      index = findIndex(controle, actualCode);
+      index = findIndexOfCodeIntoControle(actualCode);
       
       if(index >= 0) {
         Serial.println("Código está na programação atual!");
@@ -306,5 +310,4 @@ void programming() {
     }
     IrReceiver.resume();
   }
-  
 }
