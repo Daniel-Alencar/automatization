@@ -3,7 +3,7 @@
 #include "TimerOne.h"
 
 #define BYTES_LENGTH 5
-#define ATRASO_PADRAO 250
+#define DEFAULT_DELAY 250
 #define QUANTIDADE_DISPOSITIVOS 5
 
 #define RECV_PIN 11
@@ -15,6 +15,8 @@
 #define TIMER_BUTTON 1
 #define OK_BUTTON 2
 #define ARROW_BUTTON 3
+
+#define DEFAULT_MICROSECONDS_FOR_TIME 500000
 
 int devices_pin[] = { 5, 6, 7, 3, 4 };
 bool devices[] = {
@@ -29,8 +31,10 @@ int counters_for_devices[] = {
 int time_in_seconds_for_devices[] = {
   0, 0, 0, 0, 0
 };
-int device_witch_timer_is_activated = -1;
+int device_which_timer_is_activated = 0;
 
+int delayEstado = 1000;
+long int lastActivation = 0;
 
 bool programmingState = false;
 long int controle[] = {
@@ -45,29 +49,21 @@ long int controle[] = {
   0xBF40BF00, 0xBD42BF00, 0xBA45BF00, 0xE21DBF00
 };
 int lengthOfControle = sizeof(controle) / sizeof(controle[0]);
-long int memory;
+long int memoryValue;
 
-int funcaoControle(int index) {
-  if(index >= 0 && index <= 9) {
-    return NUMBER_BUTTON;
-  } else if (index == 10) {
-    return TIMER_BUTTON;
-  } else if (index == 11) {
-    return OK_BUTTON;
-  } else if (index >= 12 && index <= 15) {
-    return ARROW_BUTTON;
-  }
-}
-
-void programming();
-int findIndexOfCodeIntoControle(long int item);
-int convertIndexToAddress(int index);
 void signalToRead();
-long int valueFromIR();
-void verifyButton();
-void callback();
-int convertSecondsToCounter(int seconds);
+void setTimer();
+void timerEndEvent();
+void buttonActivationEvent();
+void programming();
+
+long int valueFromIRWithWhile();
+long int valueFromIRWithoutWhile();
+int findIndexOfCodeIntoControle(long int item);
+int funcaoControle(int index);
 int convertTimeInSeconds(String time_string);
+int convertIndexToAddress(int index);
+int convertSecondsToCounter(int seconds);
 
 void setup() {
   Serial.begin(9600);
@@ -90,88 +86,53 @@ void setup() {
   IrReceiver.begin(RECV_PIN, ENABLE_LED_FEEDBACK);
   Serial.println("Sensor IR habilitado!");
 
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), verifyButton, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonActivationEvent, CHANGE);
 }
 
 void loop() {
-  programming();
   signalToRead();
-
-  delay(ATRASO_PADRAO);
+  programming();
+  delay(DEFAULT_DELAY);
 }
 
-int convertSecondsToCounter(int seconds) {
-  return 2 * seconds;
-}
-
-void callback() {
-  counters_for_devices[device_witch_timer_is_activated]++;
-  if(
-      devices_timer_activated[device_witch_timer_is_activated] && 
-      counters_for_devices[device_witch_timer_is_activated] == convertSecondsToCounter(time_in_seconds_for_devices[device_witch_timer_is_activated])
-    ) {
-
-    devices[device_witch_timer_is_activated] = !devices[device_witch_timer_is_activated];
-    digitalWrite(devices_pin[device_witch_timer_is_activated], devices[device_witch_timer_is_activated]);
-    
-    counters_for_devices[device_witch_timer_is_activated] = 0;
-    devices_timer_activated[device_witch_timer_is_activated] = false;
-    Timer1.detachInterrupt();
-  }
-}
-
-void verifyButton() {
-  if(!digitalRead(BUTTON_PIN)) {
-    programmingState = !programmingState;
-    
-    digitalWrite(LED_PIN, programmingState);
-    delay(ATRASO_PADRAO);
-  }
-}
-
-long int valueFromIR() {
-  while(IrReceiver.decode() == false || IrReceiver.decodedIRData.decodedRawData == 0) {
-    IrReceiver.resume();
-  }
-  Serial.println("Algum código foi recebido do controle remoto!");
-  long int code = IrReceiver.decodedIRData.decodedRawData;
-  IrReceiver.resume();
-
-  return code;
-}
+// FUNCTIONS
 
 void signalToRead() {
   Serial.println("SIGNAL");
 
-  if(IrReceiver.decode()) {
-    Serial.println("Algum codigo foi recebido do controle remoto!");
-    long int code = IrReceiver.decodedIRData.decodedRawData;
-    IrReceiver.resume();
+  long int code = valueFromIRWithoutWhile();
+  bool theCodeisNotFounded = true;
 
-    Serial.print("Código: "); Serial.println(code, HEX);
-
+  if(code != 0) {
     int i;
-    for(i = 1; i < 10; i++) {
-      EEPROM.get(convertIndexToAddress(i), memory);
-      if(code == controle[i] || code == memory) {
-        devices[i - 1] = !devices[i - 1];
+    for(i = 1; i < 10 && theCodeisNotFounded; i++) {
+      EEPROM.get(convertIndexToAddress(i), memoryValue);
+      if(code == controle[i] || code == memoryValue) {
+        theCodeisNotFounded = false;
 
+        devices[i - 1] = !devices[i - 1];
         digitalWrite(devices_pin[i - 1], devices[i - 1]);
-        delay(ATRASO_PADRAO);
+
+        delay(DEFAULT_DELAY);
       }
     }
-  
-    EEPROM.get(convertIndexToAddress(10), memory);
-    if(code == controle[10] || code == memory) {
-      setTimer();
+
+    if(theCodeisNotFounded) {
+      EEPROM.get(convertIndexToAddress(10), memoryValue);
+      if(code == controle[10] || code == memoryValue) {
+        theCodeisNotFounded = false;
+        setTimer();
+
+        delay(DEFAULT_DELAY);
+      }
     }
   }
 }
 
 void setTimer() {
-  long int newCode;
+  long int code;
   int index;
-  int dispositivo;
+  int device;
 
   int number_time;
   String time_string = "000000";
@@ -180,30 +141,29 @@ void setTimer() {
 
   // Selecionar dispositivo
   do {
-    newCode = valueFromIR();
-    index = findIndexOfCodeIntoControle(newCode);
+    code = valueFromIRWithWhile();
+    index = findIndexOfCodeIntoControle(code);
 
     if(index > 0 && index <= QUANTIDADE_DISPOSITIVOS) {
-      Serial.println(String("Dispositivo ") + String(index) + String(" selecionado!"));
-      dispositivo = index - 1;
+      Serial.println(String("Dispositivo selecionado!"));
+      device = index - 1;
       break;
     } else {
       Serial.println("Selecione um dispositivo válido!");
     }
   } while(1);
 
-  // Selecionar o tempo do timer
+  // Selecionar tempo do timer
   Serial.println("00:00:00");
   do {
-    newCode = valueFromIR();
-    index = findIndexOfCodeIntoControle(newCode);
+    code = valueFromIRWithWhile();
+    index = findIndexOfCodeIntoControle(code);
 
     if(funcaoControle(index) == OK_BUTTON) {
       break;
     }
 
-    if(index_control < 6) {
-
+    if(index_control < lengthOfTime) {
       if(funcaoControle(index) == NUMBER_BUTTON) {
         number_time = index;
 
@@ -224,21 +184,121 @@ void setTimer() {
       } else {
         Serial.println("Selecione uma quantidade válida!");
       }
-
     } else {
-      Serial.println("Aperte o botão OK");
+      Serial.println("Aperte o botão OK!");
     }
 
   } while(1);
 
-  device_witch_timer_is_activated = dispositivo;
-  devices_timer_activated[dispositivo] = true;
-  time_in_seconds_for_devices[dispositivo] = convertTimeInSeconds(time_string);
+  device_which_timer_is_activated = device;
+  devices_timer_activated[device] = true;
+  time_in_seconds_for_devices[device] = convertTimeInSeconds(time_string);
 
-  Timer1.initialize(500000);
-  Timer1.attachInterrupt(callback);
+  Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
+  Timer1.attachInterrupt(timerEndEvent);
 
   Serial.println("Timer feito!");
+}
+
+void timerEndEvent() {
+  counters_for_devices[device_which_timer_is_activated]++;
+  if(
+      devices_timer_activated[device_which_timer_is_activated] && 
+      counters_for_devices[device_which_timer_is_activated] == convertSecondsToCounter(time_in_seconds_for_devices[device_which_timer_is_activated])
+    ) {
+
+    devices[device_which_timer_is_activated] = !devices[device_which_timer_is_activated];
+    digitalWrite(devices_pin[device_which_timer_is_activated], devices[device_which_timer_is_activated]);
+    
+    counters_for_devices[device_which_timer_is_activated] = 0;
+    devices_timer_activated[device_which_timer_is_activated] = false;
+    Timer1.detachInterrupt();
+  }
+}
+
+void buttonActivationEvent() {
+  if((millis() - lastActivation) > delayEstado) {
+    lastActivation = millis();
+    programmingState = !programmingState;
+
+    digitalWrite(LED_PIN, programmingState);
+    delay(DEFAULT_DELAY);
+  }
+}
+
+void programming() {  
+  Serial.println("PROGRAMMING");
+  
+  while(programmingState) {
+    int index;
+      
+    long int actualCode = valueFromIRWithWhile();
+    Serial.println("Código 1 recebido!");
+
+    index = findIndexOfCodeIntoControle(actualCode);
+    if(index >= 0) {
+      Serial.println("Código está no controle primário!");
+
+      long int code = valueFromIRWithWhile();
+      Serial.println("Código 2 recebido!");
+
+      if(code != actualCode) {
+        Serial.println("Gravando...");
+        EEPROM.put(convertIndexToAddress(index), code);
+      } else {
+        Serial.println("Esse código é o mesmo que o anterior...");
+      }
+    }
+  }
+}
+
+// AUXILIAR FUNCTIONS
+
+long int valueFromIRWithWhile() {
+  while(IrReceiver.decode() == false || IrReceiver.decodedIRData.decodedRawData == 0) {
+    IrReceiver.resume();
+  }
+  long int code = IrReceiver.decodedIRData.decodedRawData;
+  Serial.print("Código recebido:");
+  Serial.println(code, HEX);
+
+  IrReceiver.resume();
+
+  return code;
+}
+
+long int valueFromIRWithoutWhile() {
+  if(IrReceiver.decode() == true && IrReceiver.decodedIRData.decodedRawData != 0) {
+    long int code = IrReceiver.decodedIRData.decodedRawData;
+    Serial.print("Código recebido:");
+    Serial.println(code, HEX);
+
+    IrReceiver.resume();
+    return code;
+  }
+  return 0;
+}
+
+int findIndexOfCodeIntoControle(long int item) {
+  int i;
+  for(i = 0; i < lengthOfControle; i++) {
+    if(controle[i] == item) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int funcaoControle(int index) {
+  if(index >= 0 && index <= 9) {
+    return NUMBER_BUTTON;
+  } else if (index == 10) {
+    return TIMER_BUTTON;
+  } else if (index == 11) {
+    return OK_BUTTON;
+  } else if (index >= 12 && index <= 15) {
+    return ARROW_BUTTON;
+  }
 }
 
 int convertTimeInSeconds(String time_string) {
@@ -258,56 +318,7 @@ int convertIndexToAddress(int index) {
   return index * BYTES_LENGTH;
 }
 
-int findIndexOfCodeIntoControle(long int item) {
-  int i;
-  for(i = 0; i < lengthOfControle; i++) {
-    if(controle[i] == item) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-void programming() {  
-  Serial.println("PROGRAMMING");
-  
-  while(programmingState) {
-    int index;
-      
-    if(IrReceiver.decode() && IrReceiver.decodedIRData.decodedRawData != 0) {
-      Serial.println("Código 1 recebido!");
-      long int actualCode = IrReceiver.decodedIRData.decodedRawData;
-      IrReceiver.resume();
-      
-      Serial.print("Código: "); Serial.println(actualCode, HEX);
-      Serial.println();
-      
-      index = findIndexOfCodeIntoControle(actualCode);
-      
-      if(index >= 0) {
-        Serial.println("Código está na programação atual!");
-
-        while(IrReceiver.decode() == false || IrReceiver.decodedIRData.decodedRawData == 0) {
-          IrReceiver.resume();
-        }
-
-        Serial.println("Código 2 recebido!");
-        long int code = IrReceiver.decodedIRData.decodedRawData;
-        IrReceiver.resume();
-        
-        Serial.print("Código: "); Serial.println(code, HEX);
-        Serial.println();
-
-        if(code != actualCode) {
-          Serial.println("Gravando...");
-          EEPROM.put(convertIndexToAddress(index), code);
-        } else {
-          Serial.println("Esse código é o mesmo que o anterior...");
-        }
-        
-      }
-      
-    }
-    IrReceiver.resume();
-  }
+int convertSecondsToCounter(int seconds) {
+  int oneMicrosecond = 1000000; 
+  return (oneMicrosecond / DEFAULT_MICROSECONDS_FOR_TIME) * seconds;
 }
