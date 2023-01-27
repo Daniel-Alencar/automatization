@@ -1,10 +1,11 @@
 #include <IRremote.h>
 #include <EEPROM.h>
 #include "TimerOne.h"
+#include <string.h>
 
 #define BYTES_LENGTH 5
 #define DEFAULT_DELAY 250
-#define QUANTIDADE_DISPOSITIVOS 5
+#define DEVICES_QUANTITY 5
 
 #define RECV_PIN 11
 
@@ -16,7 +17,10 @@
 #define OK_BUTTON 2
 #define ARROW_BUTTON 3
 
+// A multiplicação deve ser 1000000 (que representa 1 segundo)
 #define DEFAULT_MICROSECONDS_FOR_TIME 500000
+#define SCALE_TO_CONVERT_SECONDS_TO_COUNTER 2
+
 
 int devices_pin[] = { 5, 6, 7, 3, 4 };
 bool devices[] = {
@@ -31,7 +35,7 @@ int counters_for_devices[] = {
 int time_in_seconds_for_devices[] = {
   0, 0, 0, 0, 0
 };
-int device_which_timer_is_activated = 0;
+int device_which_timer_is_activated = (0 - 1);
 
 int delayEstado = 1000;
 long int lastActivation = 0;
@@ -90,12 +94,12 @@ void setup() {
 }
 
 void loop() {
-  signalToRead();
   programming();
+  signalToRead();
   delay(DEFAULT_DELAY);
 }
 
-// FUNCTIONS
+// PRIMARY FUNCTIONS
 
 void signalToRead() {
   Serial.println("SIGNAL");
@@ -144,7 +148,7 @@ void setTimer() {
     code = valueFromIRWithWhile();
     index = findIndexOfCodeIntoControle(code);
 
-    if(index > 0 && index <= QUANTIDADE_DISPOSITIVOS) {
+    if(index > 0 && index <= DEVICES_QUANTITY) {
       Serial.println(String("Dispositivo selecionado!"));
       device = index - 1;
       break;
@@ -192,7 +196,13 @@ void setTimer() {
 
   device_which_timer_is_activated = device;
   devices_timer_activated[device] = true;
-  time_in_seconds_for_devices[device] = convertTimeInSeconds(time_string);
+
+  int seconds = convertTimeInSeconds(time_string);
+  Serial.print("SEGUNDOSSSSSSSSS:");
+  Serial.println(seconds);
+
+  time_in_seconds_for_devices[device] = seconds;
+  counters_for_devices[device] = 0;
 
   Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
   Timer1.attachInterrupt(timerEndEvent);
@@ -201,26 +211,38 @@ void setTimer() {
 }
 
 void timerEndEvent() {
-  counters_for_devices[device_which_timer_is_activated]++;
-  if(
-      devices_timer_activated[device_which_timer_is_activated] && 
-      counters_for_devices[device_which_timer_is_activated] == convertSecondsToCounter(time_in_seconds_for_devices[device_which_timer_is_activated])
-    ) {
+  Serial.print("COUNTER:");
+  Serial.println(counters_for_devices[device_which_timer_is_activated]);
 
-    devices[device_which_timer_is_activated] = !devices[device_which_timer_is_activated];
-    digitalWrite(devices_pin[device_which_timer_is_activated], devices[device_which_timer_is_activated]);
-    
-    counters_for_devices[device_which_timer_is_activated] = 0;
-    devices_timer_activated[device_which_timer_is_activated] = false;
-    Timer1.detachInterrupt();
+  if(devices_timer_activated[device_which_timer_is_activated]) {
+
+    int goalCounter = convertSecondsToCounter(
+      time_in_seconds_for_devices[device_which_timer_is_activated]
+    );
+    Serial.print("Objetivo de counter:");
+    Serial.println(goalCounter);
+
+    if(counters_for_devices[device_which_timer_is_activated] == goalCounter) {
+
+      devices[device_which_timer_is_activated] = !devices[device_which_timer_is_activated];
+      digitalWrite(devices_pin[device_which_timer_is_activated], devices[device_which_timer_is_activated]);
+      
+      devices_timer_activated[device_which_timer_is_activated] = false;
+      time_in_seconds_for_devices[device_which_timer_is_activated] = 0;
+      counters_for_devices[device_which_timer_is_activated] = 0;
+      device_which_timer_is_activated = (0 - 1);
+
+      Timer1.detachInterrupt();
+    }
   }
+  counters_for_devices[device_which_timer_is_activated]++;
 }
 
 void buttonActivationEvent() {
   if((millis() - lastActivation) > delayEstado) {
     lastActivation = millis();
-    programmingState = !programmingState;
 
+    programmingState = !programmingState;
     digitalWrite(LED_PIN, programmingState);
     delay(DEFAULT_DELAY);
   }
@@ -268,8 +290,10 @@ long int valueFromIRWithWhile() {
 }
 
 long int valueFromIRWithoutWhile() {
-  if(IrReceiver.decode() == true && IrReceiver.decodedIRData.decodedRawData != 0) {
-    long int code = IrReceiver.decodedIRData.decodedRawData;
+  long int code;
+  if(IrReceiver.decode()) {
+    code = IrReceiver.decodedIRData.decodedRawData;
+
     Serial.print("Código recebido:");
     Serial.println(code, HEX);
 
@@ -286,7 +310,7 @@ int findIndexOfCodeIntoControle(long int item) {
       return i;
     }
   }
-  return -1;
+  return (0 - 1);
 }
 
 int funcaoControle(int index) {
@@ -302,15 +326,21 @@ int funcaoControle(int index) {
 }
 
 int convertTimeInSeconds(String time_string) {
-  char hour[] = { time_string[0], time_string[1] };
-  char minute[] = { time_string[2], time_string[3] };
-  char second[] = { time_string[4], time_string[5] };
+  String hour = time_string.substring(0, 2);
+  String minute = time_string.substring(2, 4);
+  String second = time_string.substring(4, 6);
 
-  int hour_int = atoi(hour);
-  int minute_int = atoi(minute);
-  int second_int = atoi(second);
+  Serial.println("=======================");
+  int hour_int = atoi(hour.c_str());
+  int minute_int = atoi(minute.c_str());
+  int second_int = atoi(second.c_str());
 
-  int time_in_seconds = hour_int * 3600 + minute_int * 60 + second_int;
+  Serial.println(hour_int);
+  Serial.println(minute_int);
+  Serial.println(second_int);
+  Serial.println("=======================");
+
+  int time_in_seconds = hour_int * 60 * 60 + minute_int * 60 + second_int;
   return time_in_seconds;
 }
 
@@ -319,6 +349,5 @@ int convertIndexToAddress(int index) {
 }
 
 int convertSecondsToCounter(int seconds) {
-  int oneMicrosecond = 1000000; 
-  return (oneMicrosecond / DEFAULT_MICROSECONDS_FOR_TIME) * seconds;
+  return SCALE_TO_CONVERT_SECONDS_TO_COUNTER * seconds;
 }
