@@ -50,13 +50,16 @@ long int controle[] = {
   // Botão OK
   0xBE41BF00,
   // Setas direcionais (left, right, baixo, cima)
-  0xBF40BF00, 0xBD42BF00, 0xBA45BF00, 0xE21DBF00
+  0xBF40BF00, 0xBD42BF00, 0xBA45BF00, 0xE21DBF00,
+  // Ativar modo soneca
+  0xDF20BF00
 };
 int lengthOfControle = sizeof(controle) / sizeof(controle[0]);
 long int memoryValue;
 
 void signalToRead();
 void setTimer();
+void modoSoneca();
 void timerEndEvent();
 void buttonActivationEvent();
 void programming();
@@ -129,6 +132,14 @@ void signalToRead() {
 
         delay(DEFAULT_DELAY);
       }
+
+      EEPROM.get(convertIndexToAddress(16), memoryValue);
+      if(code == controle[16] || code == memoryValue) {
+        theCodeisNotFounded = false;
+        modoSoneca();
+
+        delay(DEFAULT_DELAY);
+      }
     }
   }
 }
@@ -198,8 +209,6 @@ void setTimer() {
   devices_timer_activated[device] = true;
 
   int seconds = convertTimeInSeconds(time_string);
-  Serial.print("SEGUNDOSSSSSSSSS:");
-  Serial.println(seconds);
 
   time_in_seconds_for_devices[device] = seconds;
   counters_for_devices[device] = 0;
@@ -207,20 +216,29 @@ void setTimer() {
   Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
   Timer1.attachInterrupt(timerEndEvent);
 
-  Serial.println("Timer feito!");
+  Serial.println("Modo timer ativado!");
+}
+
+void modoSoneca() {
+  device_which_timer_is_activated = 0;
+  int seconds = 1200;
+
+  devices_timer_activated[device_which_timer_is_activated] = true;
+  counters_for_devices[device_which_timer_is_activated] = 0;
+  time_in_seconds_for_devices[device_which_timer_is_activated] = seconds;
+
+  Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
+  Timer1.attachInterrupt(timerEndEvent);
+
+  Serial.println("Modo soneca ativado!");
 }
 
 void timerEndEvent() {
-  Serial.print("COUNTER:");
-  Serial.println(counters_for_devices[device_which_timer_is_activated]);
-
   if(devices_timer_activated[device_which_timer_is_activated]) {
 
     int goalCounter = convertSecondsToCounter(
       time_in_seconds_for_devices[device_which_timer_is_activated]
     );
-    Serial.print("Objetivo de counter:");
-    Serial.println(goalCounter);
 
     if(counters_for_devices[device_which_timer_is_activated] == goalCounter) {
 
@@ -330,15 +348,9 @@ int convertTimeInSeconds(String time_string) {
   String minute = time_string.substring(2, 4);
   String second = time_string.substring(4, 6);
 
-  Serial.println("=======================");
   int hour_int = atoi(hour.c_str());
   int minute_int = atoi(minute.c_str());
   int second_int = atoi(second.c_str());
-
-  Serial.println(hour_int);
-  Serial.println(minute_int);
-  Serial.println(second_int);
-  Serial.println("=======================");
 
   int time_in_seconds = hour_int * 60 * 60 + minute_int * 60 + second_int;
   return time_in_seconds;
