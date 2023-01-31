@@ -2,6 +2,8 @@
 #include <EEPROM.h>
 #include "TimerOne.h"
 #include <string.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
 #define BYTES_LENGTH 5
 #define DEFAULT_DELAY 250
@@ -21,6 +23,13 @@
 #define DEFAULT_MICROSECONDS_FOR_TIME 500000
 #define SCALE_TO_CONVERT_SECONDS_TO_COUNTER 2
 
+// DEFINIÇÕES DO LCD
+#define endereco  0x3F
+#define colunas   16
+#define linhas    2
+
+LiquidCrystal_I2C lcd(endereco, colunas, linhas);
+bool update_LCD = false;
 
 int devices_pin[] = { 5, 6, 7, 3, 4 };
 bool devices[] = {
@@ -69,6 +78,7 @@ long int valueFromIRWithoutWhile();
 int findIndexOfCodeIntoControle(long int item);
 int funcaoControle(int index);
 int convertTimeInSeconds(String time_string);
+String convertSecondsInTime(int seconds);
 int convertIndexToAddress(int index);
 int convertSecondsToCounter(int seconds);
 
@@ -94,9 +104,26 @@ void setup() {
   Serial.println("Sensor IR habilitado!");
 
   attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonActivationEvent, CHANGE);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
 }
 
 void loop() {
+  if(update_LCD) {
+    if(counters_for_devices[device_which_timer_is_activated] >= 0) {
+
+      String time = convertSecondsInTime(
+        counters_for_devices[device_which_timer_is_activated] / SCALE_TO_CONVERT_SECONDS_TO_COUNTER
+      );
+
+      lcd.clear();
+      lcd.print(time);
+    }
+    update_LCD = false;
+  }
+
   programming();
   signalToRead();
   delay(DEFAULT_DELAY);
@@ -170,6 +197,9 @@ void setTimer() {
 
   // Selecionar tempo do timer
   Serial.println("00:00:00");
+
+  lcd.clear();
+  lcd.print("00:00:00");
   do {
     code = valueFromIRWithWhile();
     index = findIndexOfCodeIntoControle(code);
@@ -194,6 +224,9 @@ void setTimer() {
         };
         Serial.println(time_string_formatted);
 
+        lcd.clear();
+        lcd.print(time_string_formatted);
+
         index_control++;
 
       } else {
@@ -211,7 +244,7 @@ void setTimer() {
   int seconds = convertTimeInSeconds(time_string);
 
   time_in_seconds_for_devices[device] = seconds;
-  counters_for_devices[device] = 0;
+  counters_for_devices[device] = convertSecondsToCounter(seconds);
 
   Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
   Timer1.attachInterrupt(timerEndEvent);
@@ -221,11 +254,12 @@ void setTimer() {
 
 void modoSoneca() {
   device_which_timer_is_activated = 0;
+  devices_timer_activated[device_which_timer_is_activated] = true;
+
   int seconds = 1200;
 
-  devices_timer_activated[device_which_timer_is_activated] = true;
-  counters_for_devices[device_which_timer_is_activated] = 0;
   time_in_seconds_for_devices[device_which_timer_is_activated] = seconds;
+  counters_for_devices[device_which_timer_is_activated] = convertSecondsToCounter(seconds);
 
   Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
   Timer1.attachInterrupt(timerEndEvent);
@@ -236,11 +270,7 @@ void modoSoneca() {
 void timerEndEvent() {
   if(devices_timer_activated[device_which_timer_is_activated]) {
 
-    int goalCounter = convertSecondsToCounter(
-      time_in_seconds_for_devices[device_which_timer_is_activated]
-    );
-
-    if(counters_for_devices[device_which_timer_is_activated] == goalCounter) {
+    if(counters_for_devices[device_which_timer_is_activated] == 0) {
 
       devices[device_which_timer_is_activated] = !devices[device_which_timer_is_activated];
       digitalWrite(devices_pin[device_which_timer_is_activated], devices[device_which_timer_is_activated]);
@@ -253,7 +283,11 @@ void timerEndEvent() {
       Timer1.detachInterrupt();
     }
   }
-  counters_for_devices[device_which_timer_is_activated]++;
+  counters_for_devices[device_which_timer_is_activated]--;
+  
+  if(counters_for_devices[device_which_timer_is_activated] % SCALE_TO_CONVERT_SECONDS_TO_COUNTER == 0) {
+    update_LCD = true;
+  }
 }
 
 void buttonActivationEvent() {
@@ -352,8 +386,31 @@ int convertTimeInSeconds(String time_string) {
   int minute_int = atoi(minute.c_str());
   int second_int = atoi(second.c_str());
 
-  int time_in_seconds = hour_int * 60 * 60 + minute_int * 60 + second_int;
+  int time_in_seconds = hour_int * 3600 + minute_int * 60 + second_int;
   return time_in_seconds;
+}
+
+String convertSecondsInTime(int seconds) {
+  int hour_int = seconds / 3600;
+  seconds = seconds % 3600;
+  int minute_int = seconds / 60;
+  seconds = seconds % 60;
+  int second_int = seconds;
+
+  char hour[3];
+  char minute[3];
+  char second[3];
+  sprintf(hour, "%02d", hour_int);
+  sprintf(minute, "%02d", minute_int);
+  sprintf(second, "%02d", second_int);
+
+  char time_string_formatted[] = {
+    hour[0], hour[1], ':', 
+    minute[0], minute[1], ':', 
+    second[0], second[1], '\0'
+  };
+
+  return String(time_string_formatted);
 }
 
 int convertIndexToAddress(int index) {
