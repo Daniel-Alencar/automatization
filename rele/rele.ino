@@ -23,6 +23,8 @@
 #define DEFAULT_MICROSECONDS_FOR_TIME 500000
 #define SCALE_TO_CONVERT_SECONDS_TO_COUNTER 2
 
+int actualNumberOfInterruptions = 0;
+
 // DEFINIÇÕES DO LCD
 #define endereco  0x3F
 #define colunas   16
@@ -38,10 +40,10 @@ bool devices[] = {
 bool devices_timer_activated[] = {
   false, false, false, false, false
 };
-int counters_for_devices[] = {
+int actual_seconds_for_devices[] = {
   0, 0, 0, 0, 0
 };
-int time_in_seconds_for_devices[] = {
+int goal_seconds_for_devices[] = {
   0, 0, 0, 0, 0
 };
 int device_which_timer_is_activated = (0 - 1);
@@ -112,14 +114,15 @@ void setup() {
 
 void loop() {
   if(update_LCD) {
-    if(counters_for_devices[device_which_timer_is_activated] >= 0) {
+    if(actual_seconds_for_devices[device_which_timer_is_activated] >= 0) {
 
       String time = convertSecondsInTime(
-        counters_for_devices[device_which_timer_is_activated] / SCALE_TO_CONVERT_SECONDS_TO_COUNTER
+        actual_seconds_for_devices[device_which_timer_is_activated]
       );
 
       lcd.clear();
       lcd.print(time);
+      lcd.print(String(" ") + String("Device") + String(device_which_timer_is_activated + 1));
     }
     update_LCD = false;
   }
@@ -200,6 +203,7 @@ void setTimer() {
 
   lcd.clear();
   lcd.print("00:00:00");
+  lcd.print(String(" ") + String("Device") + String(device + 1));
   do {
     code = valueFromIRWithWhile();
     index = findIndexOfCodeIntoControle(code);
@@ -226,6 +230,7 @@ void setTimer() {
 
         lcd.clear();
         lcd.print(time_string_formatted);
+        lcd.print(String(" ") + String("Device") + String(device + 1));
 
         index_control++;
 
@@ -243,8 +248,10 @@ void setTimer() {
 
   int seconds = convertTimeInSeconds(time_string);
 
-  time_in_seconds_for_devices[device] = seconds;
-  counters_for_devices[device] = convertSecondsToCounter(seconds);
+  goal_seconds_for_devices[device] = seconds;
+  actual_seconds_for_devices[device] = seconds;
+
+  actualNumberOfInterruptions = 0;
 
   Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
   Timer1.attachInterrupt(timerEndEvent);
@@ -258,8 +265,10 @@ void modoSoneca() {
 
   int seconds = 1200;
 
-  time_in_seconds_for_devices[device_which_timer_is_activated] = seconds;
-  counters_for_devices[device_which_timer_is_activated] = convertSecondsToCounter(seconds);
+  goal_seconds_for_devices[device_which_timer_is_activated] = seconds;
+  actual_seconds_for_devices[device_which_timer_is_activated] = seconds;
+
+  actualNumberOfInterruptions = 0;
 
   Timer1.initialize(DEFAULT_MICROSECONDS_FOR_TIME);
   Timer1.attachInterrupt(timerEndEvent);
@@ -270,22 +279,24 @@ void modoSoneca() {
 void timerEndEvent() {
   if(devices_timer_activated[device_which_timer_is_activated]) {
 
-    if(counters_for_devices[device_which_timer_is_activated] == 0) {
+    if(actual_seconds_for_devices[device_which_timer_is_activated] == 0) {
 
       devices[device_which_timer_is_activated] = !devices[device_which_timer_is_activated];
       digitalWrite(devices_pin[device_which_timer_is_activated], devices[device_which_timer_is_activated]);
       
       devices_timer_activated[device_which_timer_is_activated] = false;
-      time_in_seconds_for_devices[device_which_timer_is_activated] = 0;
-      counters_for_devices[device_which_timer_is_activated] = 0;
+      goal_seconds_for_devices[device_which_timer_is_activated] = 0;
+      actual_seconds_for_devices[device_which_timer_is_activated] = 0;
       device_which_timer_is_activated = (0 - 1);
 
       Timer1.detachInterrupt();
     }
   }
-  counters_for_devices[device_which_timer_is_activated]--;
-  
-  if(counters_for_devices[device_which_timer_is_activated] % SCALE_TO_CONVERT_SECONDS_TO_COUNTER == 0) {
+
+  actualNumberOfInterruptions++;
+
+  if(actualNumberOfInterruptions % SCALE_TO_CONVERT_SECONDS_TO_COUNTER == 0) {
+    actual_seconds_for_devices[device_which_timer_is_activated]--;
     update_LCD = true;
   }
 }
