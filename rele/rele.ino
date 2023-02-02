@@ -5,7 +5,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-#define BYTES_LENGTH 5
+#define BYTES_LENGTH 4
 #define DEFAULT_DELAY 250
 #define DEVICES_QUANTITY 5
 
@@ -32,6 +32,7 @@ int actualNumberOfInterruptions = 0;
 
 LiquidCrystal_I2C lcd(endereco, colunas, linhas);
 bool update_LCD = false;
+bool isBackLight = true;
 
 int devices_pin[] = { 5, 6, 7, 3, 4 };
 bool devices[] = {
@@ -63,7 +64,9 @@ long int controle[] = {
   // Setas direcionais (left, right, baixo, cima)
   0xBF40BF00, 0xBD42BF00, 0xBA45BF00, 0xE21DBF00,
   // Ativar modo soneca
-  0xDF20BF00
+  0xDF20BF00,
+  // Ativar/Desativar Luminosidade do LCD
+  0xFC03BF00
 };
 int lengthOfControle = sizeof(controle) / sizeof(controle[0]);
 long int memoryValue;
@@ -109,7 +112,6 @@ void setup() {
 
   lcd.init();
   lcd.backlight();
-  lcd.clear();
 }
 
 void loop() {
@@ -123,6 +125,8 @@ void loop() {
       lcd.clear();
       lcd.print(time);
       lcd.print(String(" ") + String("Device") + String(device_which_timer_is_activated + 1));
+      lcd.setCursor(0, 1);
+      lcd.print("Receiving...");
     }
     update_LCD = false;
   }
@@ -135,7 +139,13 @@ void loop() {
 // PRIMARY FUNCTIONS
 
 void signalToRead() {
-  Serial.println("SIGNAL");
+  Serial.println("RECEBENDO SINAL");
+
+  if(programmingState == false && device_which_timer_is_activated < 0) {
+    lcd.clear();
+    lcd.setCursor(0, 1);
+    lcd.print("Receiving...");
+  }
 
   long int code = valueFromIRWithoutWhile();
   bool theCodeisNotFounded = true;
@@ -170,6 +180,20 @@ void signalToRead() {
 
         delay(DEFAULT_DELAY);
       }
+
+      EEPROM.get(convertIndexToAddress(17), memoryValue);
+      if(code == controle[17] || code == memoryValue) {
+        theCodeisNotFounded = false;
+        if(isBackLight) {
+          lcd.noBacklight();
+          isBackLight = false;
+        } else {
+          lcd.backlight();
+          isBackLight = true;
+        }
+
+        delay(DEFAULT_DELAY);
+      }
     }
   }
 }
@@ -186,12 +210,21 @@ void setTimer() {
 
   // Selecionar dispositivo
   do {
+    Serial.println("Selecione um dispositivo!");
+    lcd.clear();
+    lcd.setCursor(0, 1);
+    lcd.print("Choose a Device!");
+    
     code = valueFromIRWithWhile();
     index = findIndexOfCodeIntoControle(code);
 
     if(index > 0 && index <= DEVICES_QUANTITY) {
-      Serial.println(String("Dispositivo selecionado!"));
       device = index - 1;
+
+      Serial.println(String("Dispositivo selecionado!"));
+      lcd.clear();
+      lcd.print(String("Device") + String(device + 1));
+      
       break;
     } else {
       Serial.println("Selecione um dispositivo válido!");
@@ -199,11 +232,7 @@ void setTimer() {
   } while(1);
 
   // Selecionar tempo do timer
-  Serial.println("00:00:00");
-
-  lcd.clear();
-  lcd.print("00:00:00");
-  lcd.print(String(" ") + String("Device") + String(device + 1));
+  lcd.print(String(" ") + String("00:00:00"));
   do {
     code = valueFromIRWithWhile();
     index = findIndexOfCodeIntoControle(code);
@@ -226,11 +255,10 @@ void setTimer() {
           time_string[2], time_string[3], ':', 
           time_string[4], time_string[5], '\0'
         };
-        Serial.println(time_string_formatted);
 
         lcd.clear();
+        lcd.print(String("Device") + String(device + 1) + String(" "));
         lcd.print(time_string_formatted);
-        lcd.print(String(" ") + String("Device") + String(device + 1));
 
         index_control++;
 
@@ -260,10 +288,11 @@ void setTimer() {
 }
 
 void modoSoneca() {
+
   device_which_timer_is_activated = 0;
   devices_timer_activated[device_which_timer_is_activated] = true;
 
-  int seconds = 1200;
+  int seconds = 12;
 
   goal_seconds_for_devices[device_which_timer_is_activated] = seconds;
   actual_seconds_for_devices[device_which_timer_is_activated] = seconds;
@@ -312,26 +341,44 @@ void buttonActivationEvent() {
 }
 
 void programming() {  
-  Serial.println("PROGRAMMING");
+  Serial.println("MODO PROGRAMAÇÃO");
+  
+  if(programmingState) {
+    lcd.clear();
+    lcd.setCursor(0, 1);
+    lcd.print("Programming mode!");
+    delay(DEFAULT_DELAY * 5);
+  }
   
   while(programmingState) {
     int index;
-      
+    
+    lcd.clear();
+    lcd.print("Code1:");
+
     long int actualCode = valueFromIRWithWhile();
-    Serial.println("Código 1 recebido!");
 
     index = findIndexOfCodeIntoControle(actualCode);
     if(index >= 0) {
-      Serial.println("Código está no controle primário!");
+      lcd.print(String(actualCode));
+
+      lcd.setCursor(0, 1);
+      lcd.print("Code2:");
 
       long int code = valueFromIRWithWhile();
-      Serial.println("Código 2 recebido!");
 
       if(code != actualCode) {
-        Serial.println("Gravando...");
-        EEPROM.put(convertIndexToAddress(index), code);
-      } else {
-        Serial.println("Esse código é o mesmo que o anterior...");
+        lcd.print(String(code));
+
+        long int codeControle = valueFromIRWithWhile();
+        if(funcaoControle(codeControle) == OK_BUTTON) {
+          EEPROM.put(convertIndexToAddress(index), code);
+
+          lcd.clear();
+          lcd.setCursor(0, 1);
+          lcd.print("Gravando...");
+          delay(DEFAULT_DELAY);
+        }
       }
     }
   }
