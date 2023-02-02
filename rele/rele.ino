@@ -342,7 +342,7 @@ void buttonActivationEvent() {
 
 void programming() {  
   Serial.println("MODO PROGRAMAÇÃO");
-  
+
   if(programmingState) {
     lcd.clear();
     lcd.setCursor(0, 1);
@@ -352,10 +352,10 @@ void programming() {
   
   while(programmingState) {
     int index;
-    
+
     lcd.clear();
     lcd.print("Code1:");
-
+      
     long int actualCode = valueFromIRWithWhile();
 
     index = findIndexOfCodeIntoControle(actualCode);
@@ -369,16 +369,12 @@ void programming() {
 
       if(code != actualCode) {
         lcd.print(String(code));
+        EEPROM.put(convertIndexToAddress(index), code);
 
-        long int codeControle = valueFromIRWithWhile();
-        if(funcaoControle(codeControle) == OK_BUTTON) {
-          EEPROM.put(convertIndexToAddress(index), code);
-
-          lcd.clear();
-          lcd.setCursor(0, 1);
-          lcd.print("Gravando...");
-          delay(DEFAULT_DELAY);
-        }
+        lcd.clear();
+        lcd.setCursor(0, 1);
+        lcd.print("Recording...");
+        delay(DEFAULT_DELAY * 10);
       }
     }
   }
